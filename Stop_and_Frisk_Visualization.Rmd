@@ -1,0 +1,1252 @@
+---
+title: "Examining NYPD's Stop and Frisk Program 2010-2015"
+output: 
+    flexdashboard::flex_dashboard:
+    vertical_layout: scroll
+---
+
+```{r global_options, include=FALSE}
+library(knitr)
+opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+```
+
+```{r packages, include = FALSE}
+library(xlsx)
+library(plotly)
+library(flexdashboard)
+library(rgdal)
+library(tmap)
+library(ggmap)
+library(dplyr)
+library(leaflet)
+library(maptools)
+library(RColorBrewer)
+```
+
+```{r alldata_setup, include = FALSE}
+subset_data <- read.csv("subset_data.csv")
+
+felony_m <- read.xlsx("seven-major-felony-offenses-2000-2016.xls",
+                      sheetIndex = 1, startRow = 5)
+felony_m <- felony_m[grep("TOTAL", felony_m$OFFENSE), ]
+felony_m <- t(felony_m[ ,c(12:17)])
+colnames(felony_m) <- c("felony_m")
+felony_nm <- read.xlsx("non-seven-major-felony-offenses-2000-2016.xls",
+                       sheetIndex = 1, startRow = 5)
+felony_nm <- felony_nm[grep("TOTAL", felony_nm$OFFENSE), ]
+felony_nm <- t(felony_nm[ ,c(12:17)])
+colnames(felony_nm) <- c("felony_nm")
+misdemeanor <- read.xlsx("misdemeanor-offenses-2000-2016.xls",
+                         sheetIndex = 1, startRow = 4)
+misdemeanor <- misdemeanor[grep("TOTAL", misdemeanor$OFFENSE), ]
+misdemeanor <- t(misdemeanor[ ,c(12:17)])
+colnames(misdemeanor) <- c("misdemeanor")
+
+overall_race <- subset_data %>% 
+    dplyr::group_by(year, race) %>% 
+    summarise(freq = n())
+
+stat_black <- overall_race[overall_race$race == "B", -2] %>% 
+    rename(freq_black = freq)
+stat_white <- overall_race[overall_race$race == "W", -2] %>% 
+    rename(freq_white = freq)
+stat_hisp <- overall_race[overall_race$race == "P" | overall_race$race == "Q", -2] %>% 
+    group_by(year) %>% 
+    summarize(freq_hisp = sum(freq))
+stat_other <- overall_race[overall_race$race == "A" | overall_race$race == "I" |
+                           overall_race$race == "X" | overall_race$race == "Z", -2] %>% 
+    group_by(year) %>% 
+    summarize(freq_other = sum(freq))
+stat_all <- overall_race %>% group_by(year) %>% 
+    summarize(freq_all = sum(freq))
+
+stat_gender <- subset_data %>% 
+    group_by(year, sex) %>% 
+    summarise(freq_gender = n())
+stat_men <- stat_gender[stat_gender$sex == "M", ] %>% 
+    rename(freq_men = freq_gender)
+stat_women <- stat_gender[stat_gender$sex == "F", ] %>% 
+    rename(freq_women = freq_gender)
+stat_unknown <- stat_gender[stat_gender$sex == "Z", ] %>% 
+    rename(freq_unknown = freq_gender)
+
+stat_arrest <- subset_data %>% 
+    group_by(year, arstmade) %>% 
+    summarise(freq_arst = n()) %>% 
+    filter(arstmade == "Y")
+stat_contrabn <- subset_data %>% 
+    group_by(year, contrabn) %>% 
+    summarise(freq_contrabn = n()) %>% 
+    filter(contrabn == "Y")
+stat_pistol <- subset_data %>% 
+    group_by(year, pistol) %>% 
+    summarise(freq_pistol = n()) %>% 
+    filter(pistol == "Y" | pistol == "1") %>% 
+    group_by(year) %>% 
+    summarise(freq_pistol = sum(freq_pistol))
+stat_riflshot <- subset_data %>% 
+    group_by(year, riflshot) %>% 
+    summarise(freq_riflshot = n()) %>% 
+    filter(riflshot == "Y" | riflshot == "1") %>% 
+    group_by(year) %>% 
+    summarise(freq_riflshot = sum(freq_riflshot))
+stat_asltweap <- subset_data %>% 
+    group_by(year, asltweap) %>% 
+    summarise(freq_asltweap = n()) %>% 
+    filter(asltweap == "Y" | asltweap == "1") %>% 
+    group_by(year) %>% 
+    summarise(freq_asltweap = sum(freq_asltweap))
+stat_knifcuti <- subset_data %>% 
+    group_by(year, knifcuti) %>% 
+    summarise(freq_knifcuti = n()) %>% 
+    filter(knifcuti == "Y" | knifcuti == "1") %>% 
+    group_by(year) %>% 
+    summarise(freq_knifcuti = sum(freq_knifcuti))
+stat_machgun <- subset_data %>% 
+    group_by(year, machgun) %>% 
+    summarise(freq_machgun = n()) %>% 
+    filter(machgun == "Y") 
+stat_machgun[5:6, 1] <- c(2014, 2015)
+stat_machgun[5:6, 3] <- c(0, 0)
+stat_othrweap <- subset_data %>% 
+    group_by(year, othrweap) %>% 
+    summarise(freq_othrweap = n()) %>% 
+    filter(othrweap == "Y" | othrweap == "1") %>% 
+    group_by(year) %>% 
+    summarise(freq_othrweap = sum(freq_othrweap))
+stat_hands <- subset_data %>% 
+    group_by(year, pf_hands) %>% 
+    summarise(freq_hands = n()) %>% 
+    filter(pf_hands == "Y" | pf_hands == "1") %>% 
+    group_by(year) %>% 
+    summarise(freq_hands = sum(freq_hands))
+stat_wall <- subset_data %>% 
+    group_by(year, pf_wall) %>% 
+    summarise(freq_wall = n()) %>% 
+    filter(pf_wall == "Y" | pf_wall == "1") %>% 
+    group_by(year) %>% 
+    summarise(freq_wall = sum(freq_wall))
+stat_grnd <- subset_data %>% 
+    group_by(year, pf_grnd) %>% 
+    summarise(freq_grnd = n()) %>% 
+    filter(pf_grnd == "Y" | pf_grnd == "1") %>% 
+    group_by(year) %>% 
+    summarise(freq_grnd = sum(freq_grnd))
+stat_drwep <- subset_data %>% 
+    group_by(year, pf_drwep) %>% 
+    summarise(freq_drwep = n()) %>% 
+    filter(pf_drwep == "Y" | pf_drwep == "1") %>% 
+    group_by(year) %>% 
+    summarise(freq_drwep = sum(freq_drwep))
+stat_ptwep <- subset_data %>% 
+    group_by(year, pf_ptwep) %>% 
+    summarise(freq_ptwep = n()) %>% 
+    filter(pf_ptwep == "Y" | pf_ptwep == "1") %>% 
+    group_by(year) %>% 
+    summarise(freq_ptwep = sum(freq_ptwep))
+stat_baton <- subset_data %>% 
+    group_by(year, pf_baton) %>% 
+    summarise(freq_baton = n()) %>% 
+    filter(pf_baton == "Y" | pf_baton == "1") %>% 
+    group_by(year) %>% 
+    summarise(freq_baton = sum(freq_baton))
+stat_hcuff <- subset_data %>% 
+    group_by(year, pf_hcuff) %>% 
+    summarise(freq_hcuff = n()) %>% 
+    filter(pf_hcuff == "Y" | pf_hcuff == "1") %>% 
+    group_by(year) %>% 
+    summarise(freq_hcuff = sum(freq_hcuff))
+stat_pepsp <- subset_data %>% 
+    group_by(year, pf_pepsp) %>% 
+    summarise(freq_pepsp = n()) %>% 
+    filter(pf_pepsp == "Y" | pf_pepsp == "1") %>% 
+    group_by(year) %>% 
+    summarise(freq_pepsp = sum(freq_pepsp))
+stat_pfother <- subset_data %>% 
+    group_by(year, pf_other) %>% 
+    summarise(freq_pfother = n()) %>% 
+    filter(pf_other == "Y" | pf_other == "1") %>% 
+    group_by(year) %>% 
+    summarise(freq_pfother = sum(freq_pfother))
+subset_data$force <- ifelse(subset_data$pf_hands == "Y" | subset_data$pf_hands == "1" |
+                                subset_data$pf_wall == "Y" | subset_data$pf_wall == "1" |
+                                subset_data$pf_grnd == "Y" | subset_data$pf_grnd == "1" |
+                                subset_data$pf_drwep == "Y" | subset_data$pf_drwep == "1" |
+                                subset_data$pf_ptwep == "Y" | subset_data$pf_ptwep == "1" | 
+                                subset_data$pf_baton == "Y" | subset_data$pf_baton == "1" |
+                                subset_data$pf_hcuff == "Y" | subset_data$pf_hcuff == "1" |
+                                subset_data$pf_pepsp == "Y" | subset_data$pf_pepsp == "1" |
+                                subset_data$pf_other == "Y" | subset_data$pf_other == "1",
+                            1, 0)
+stat_force <- subset_data %>% 
+    group_by(year, force) %>% 
+    summarise(freq_force = n()) %>% 
+    filter(force == 1)
+
+overall_stats <- cbind.data.frame(stat_black, stat_white, stat_hisp, stat_other, stat_all, 
+                                  felony_m, felony_nm, misdemeanor, stat_men, stat_women, 
+                                  stat_unknown, stat_arrest, stat_contrabn, stat_pistol, 
+                                  stat_riflshot, stat_asltweap, stat_knifcuti, stat_machgun,
+                                  stat_othrweap, stat_hands, stat_wall, stat_grnd, stat_drwep,
+                                  stat_ptwep, stat_baton, stat_hcuff, stat_pepsp, stat_pfother,
+                                  stat_force)
+overall_stats <- overall_stats[ , -c(3, 5, 7, 9, 14, 17)]
+overall_stats <- overall_stats %>% 
+    mutate(felony_total = felony_m + felony_nm) %>% 
+    mutate(pct_black = round((freq_black / freq_all) * 100, 2)) %>% 
+    mutate(pct_white = round((freq_white / freq_all) * 100, 2)) %>% 
+    mutate(pct_hisp = round((freq_hisp / freq_all) * 100, 2)) %>% 
+    mutate(pct_other = round((freq_other / freq_all) * 100, 2)) %>% 
+    mutate(pct_men = round((freq_men / freq_all) * 100, 2)) %>% 
+    mutate(pct_women = round((freq_women / freq_all) * 100, 2)) %>% 
+    mutate(pct_unknown = round((freq_unknown / freq_all) * 100, 2)) %>% 
+    mutate(pct_arrest = round((freq_arst / freq_all) * 100, 2)) %>% 
+    mutate(pct_contrabn = round((freq_contrabn / freq_all) * 100, 2)) %>% 
+    mutate(pct_wpn = round(((freq_pistol + freq_riflshot + freq_asltweap
+                             + freq_knifcuti + freq_machgun + freq_othrweap) 
+                            / freq_all) * 100, 2)) %>% 
+    mutate(pct_hands = round((freq_hands / freq_all) * 100, 2)) %>% 
+    mutate(pct_wall = round((freq_wall / freq_all) * 100, 2)) %>% 
+    mutate(pct_grnd = round((freq_grnd / freq_all) * 100, 2)) %>% 
+    mutate(pct_drwep = round((freq_drwep / freq_all) * 100, 2)) %>% 
+    mutate(pct_ptwep = round((freq_ptwep / freq_all) * 100, 2)) %>%
+    mutate(pct_baton = round((freq_baton / freq_all) * 100, 2)) %>% 
+    mutate(pct_hcuff = round((freq_hcuff / freq_all) * 100, 2)) %>% 
+    mutate(pct_pepsp = round((freq_pepsp / freq_all) * 100, 2)) %>% 
+    mutate(pct_pfother = round((freq_pfother / freq_all) * 100, 2)) %>% 
+    mutate(pct_force = round((freq_force / freq_all) * 100, 2))
+```
+
+```{r 2015data_setup, include = FALSE}
+sqf15 <- read.csv("2015_sqf_csv.csv", stringsAsFactors = FALSE)
+
+sqf15 <- sqf15[!is.na(sqf15$xcoord), ]
+sqf15_xy <- sqf15[, c(108, 109)]
+sqf15_spdf <- SpatialPointsDataFrame(coords = sqf15_xy, data = sqf15, 
+                                   proj4string = CRS("+proj=lcc +lat_1=41.03333333333333 
+                                                     +lat_2=40.66666666666666 +lat_0=40.16666666666666 
+                                                     +lon_0=-74 +x_0=300000.0000000001 +y_0=0 +ellps=GRS80 
+                                                     +datum=NAD83 +to_meter=0.3048006096012192 +no_defs"))
+
+sqf15_spdf_wgs84 <- spTransform(sqf15_spdf, CRS("+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs"))
+sqf15_wgs84 <- as.data.frame(sqf15_spdf_wgs84)
+sqf15_wgs84 <- sqf15_wgs84[, -c(108,109)]
+sqf15_wgs84 <- rename(sqf15_wgs84, long = xcoord.1)
+sqf15_wgs84 <- rename(sqf15_wgs84, lat = ycoord.1)
+
+#recoding race variables
+sqf15_wgs84$race[sqf15_wgs84$race == "B"] <- "Black"
+sqf15_wgs84$race[sqf15_wgs84$race == "W"] <- "White"
+sqf15_wgs84$race[sqf15_wgs84$race == "P" | 
+                   sqf15_wgs84$race == "Q"] <- "Hispanic"
+sqf15_wgs84$race[sqf15_wgs84$race == "A" | 
+                   sqf15_wgs84$race == "I" |
+                   sqf15_wgs84$race == "X" | 
+                   sqf15_wgs84$race == "Z" | 
+                   sqf15_wgs84$race == "U"] <- "Other"
+
+#recoding sex variables
+sqf15_wgs84$sex[sqf15_wgs84$sex == "M"] <- "Male"
+sqf15_wgs84$sex[sqf15_wgs84$sex == "F"] <- "Female"
+sqf15_wgs84$sex[sqf15_wgs84$sex == "Z"] <- "Unknown"
+
+#Create variable to show if force was used at all
+sqf15_wgs84$Force <- ifelse(sqf15_wgs84$pf_baton == "Y" | 
+                              sqf15_wgs84$pf_hands == "Y" |
+                              sqf15_wgs84$pf_wall == "Y" | 
+                              sqf15_wgs84$pf_grnd == "Y" |
+                              sqf15_wgs84$pf_drwep == "Y" |
+                              sqf15_wgs84$pf_ptwep == "Y" |
+                              sqf15_wgs84$pf_hcuff == "Y" |
+                              sqf15_wgs84$pf_pepsp == "Y" |
+                              sqf15_wgs84$pf_other == "Y", 1, 0)
+
+sqf15_wgs84$Force[sqf15_wgs84$Force == 1] <- "Force Used"
+sqf15_wgs84$Force[sqf15_wgs84$Force == 0] <- "No Force Used"
+
+sqf15_wgs84$arstmade[sqf15_wgs84$arstmade == "Y"] <- "Arrest Made"
+sqf15_wgs84$arstmade[sqf15_wgs84$arstmade == "N"] <- "No Arrest Made"
+
+sqf15_wgs84$contrabn[sqf15_wgs84$contrabn == "Y"] <- "Contraband Found"
+sqf15_wgs84$contrabn[sqf15_wgs84$contrabn == "N"] <- "No Contraband Found"
+
+sqf15_wgs84$weapon <- ifelse(sqf15_wgs84$pistol == "Y" | 
+                              sqf15_wgs84$riflshot == "Y" |
+                              sqf15_wgs84$asltweap == "Y" | 
+                              sqf15_wgs84$knifcuti == "Y" |
+                              sqf15_wgs84$machgun == "Y" |
+                              sqf15_wgs84$othrweap == "Y", 1, 0)
+
+sqf15_wgs84$weapon[sqf15_wgs84$weapon == 1] <- "Weapon Found"
+sqf15_wgs84$weapon[sqf15_wgs84$weapon == 0] <- "No Weapon Found"
+
+#subset of stops using force only
+force15 <- sqf15_wgs84[sqf15_wgs84$Force == "Force Used", ]
+
+#subset of no force
+noforce15 <- sqf15_wgs84[sqf15_wgs84$Force == "No Force Used", ]
+
+#subset of arrests and contraband
+arrests15 <- sqf15_wgs84[sqf15_wgs84$arstmade == "Arrest Made", ]
+contraband15 <- sqf15_wgs84[sqf15_wgs84$contrabn == "Contraband Found", ]
+
+#subset of weapons
+weapon15 <- sqf15_wgs84[sqf15_wgs84$weapon == "Weapon Found", ]
+```
+
+```{r 2010data_setup, include = FALSE}
+sqf10 <- read.csv("2010_sqf_csv.csv", stringsAsFactors = FALSE)
+
+sqf10 <- sqf10[!is.na(sqf10$xcoord), ]
+sqf10_xy <- sqf10[, c(107, 108)]
+sqf10_spdf <- SpatialPointsDataFrame(coords = sqf10_xy, data = sqf10, 
+                                     proj4string = CRS("+proj=lcc +lat_1=41.03333333333333 
+                                                       +lat_2=40.66666666666666 +lat_0=40.16666666666666 
+                                                       +lon_0=-74 +x_0=300000.0000000001 +y_0=0 +ellps=GRS80 
+                                                       +datum=NAD83 +to_meter=0.3048006096012192 +no_defs"))
+
+
+sqf10_spdf_wgs84 <- spTransform(sqf10_spdf, CRS("+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs"))
+sqf10_wgs84 <- as.data.frame(sqf10_spdf_wgs84)
+sqf10_wgs84 <- sqf10_wgs84[, -c(107,108)]
+sqf10_wgs84 <- rename(sqf10_wgs84, long = xcoord.1)
+sqf10_wgs84 <- rename(sqf10_wgs84, lat = ycoord.1)
+
+#recoding race variables
+sqf10_wgs84$race[sqf10_wgs84$race == "B"] <- "Black"
+sqf10_wgs84$race[sqf10_wgs84$race == "W"] <- "White"
+sqf10_wgs84$race[sqf10_wgs84$race == "P" | 
+                   sqf10_wgs84$race == "Q"] <- "Hispanic"
+sqf10_wgs84$race[sqf10_wgs84$race == "A" | 
+                   sqf10_wgs84$race == "I" |
+                   sqf10_wgs84$race == "X" | 
+                   sqf10_wgs84$race == "Z" | 
+                   sqf10_wgs84$race == "U"] <- "Other"
+
+#subset of stops using force only
+sqf10_wgs84$Force <- ifelse(sqf10_wgs84$pf_baton == "Y" | 
+                         sqf10_wgs84$pf_hands == "Y" |
+                         sqf10_wgs84$pf_wall == "Y" | 
+                         sqf10_wgs84$pf_grnd == "Y" |
+                         sqf10_wgs84$pf_drwep == "Y" |
+                         sqf10_wgs84$pf_ptwep == "Y" |
+                         sqf10_wgs84$pf_hcuff == "Y" |
+                         sqf10_wgs84$pf_pepsp == "Y" |
+                         sqf10_wgs84$pf_other == "Y", 1, 0)
+
+sqf10_wgs84$Force[sqf10_wgs84$Force == 1] <- "Force Used"
+sqf10_wgs84$Force[sqf10_wgs84$Force == 0] <- "No Force Used"
+
+sqf10_wgs84$arstmade[sqf10_wgs84$arstmade == "Y"] <- "Arrest Made"
+sqf10_wgs84$arstmade[sqf10_wgs84$arstmade == "N"] <- "No Arrest Made"
+
+sqf10_wgs84$contrabn[sqf10_wgs84$contrabn == "Y"] <- "Contraband Found"
+sqf10_wgs84$contrabn[sqf10_wgs84$contrabn == "N"] <- "No Contraband Found"
+
+#subset of stops using force only
+force10 <- sqf10_wgs84[sqf10_wgs84$Force == "Force Used", ]
+
+#subset of no force
+noforce10 <- sqf10_wgs84[sqf10_wgs84$Force == "No Force Used", ]
+
+#subset of arrests and contraband
+arrests10 <- sqf10_wgs84[sqf10_wgs84$arstmade == "Arrest Made", ]
+contraband10 <- sqf10_wgs84[sqf10_wgs84$contrabn == "Contraband Found", ]
+```
+
+```{r maps_setup, include = FALSE}
+theme_set(theme_minimal())
+theme_map_left <- function(base_size=9, base_family="") {
+    require(grid)
+    theme_bw(base_size=base_size, base_family=base_family) %+replace%
+    theme(axis.line=element_blank(),
+          axis.text=element_blank(),
+          axis.ticks=element_blank(),
+          axis.title=element_blank(),
+          panel.background=element_blank(),
+          panel.border=element_blank(),
+          panel.grid=element_blank(),
+          panel.margin=unit(0, "lines"),
+          plot.background=element_blank(),
+          legend.justification = c(0,0),
+          legend.position = c(0,0)
+          )
+}
+
+theme_map_right <- function(base_size=9, base_family="") {
+    require(grid)
+    theme_bw(base_size=base_size, base_family=base_family) %+replace%
+    theme(axis.line=element_blank(),
+          axis.text=element_blank(),
+          axis.ticks=element_blank(),
+          axis.title=element_blank(),
+          panel.background=element_blank(),
+          panel.border=element_blank(),
+          panel.grid=element_blank(),
+          panel.margin=unit(0, "lines"),
+          plot.background=element_blank(),
+          legend.justification = c(0,0),
+          legend.position = c(0.66,0)
+          )
+}
+
+theme_map_topright <- function(base_size=9, base_family="") {
+    require(grid)
+    theme_bw(base_size=base_size, base_family=base_family) %+replace%
+    theme(axis.line=element_blank(),
+          axis.text=element_blank(),
+          axis.ticks=element_blank(),
+          axis.title=element_blank(),
+          panel.background=element_blank(),
+          panel.border=element_blank(),
+          panel.grid=element_blank(),
+          panel.margin=unit(0, "lines"),
+          plot.background=element_blank(),
+          legend.justification = c(0,0),
+          legend.position = c(0.9, 0.75)
+          )
+}
+
+map_NYC_st <- get_map("New York City", zoom = 11, source = "stamen", maptype = "toner-lite")
+map_bk_st <- get_map("Brooklyn", zoom = 13, source = "stamen", maptype = "toner-lite")
+map_harlem_st <- get_map("Harlem", zoom = 13, source = "stamen", maptype = "toner-lite")
+map_qn_st <- get_map("Queens", zoom = 13, source = "stamen", maptype = "toner-lite")
+```
+
+```{r census2015_setup, include = FALSE}
+tracts15 <- readOGR(dsn = "census_tracts_2015/cb_2015_36_tract_500k.shp")
+boros15 <- tracts15[tracts15$COUNTYFP == "005" | 
+                          tracts15$COUNTYFP == "047" | 
+                          tracts15$COUNTYFP == "061" | 
+                          tracts15$COUNTYFP == "081" | 
+                          tracts15$COUNTYFP == "085", ]
+
+acs15_race <- read.csv("ACS_15_5YR_DP05_with_ann.csv", skip = 1, header = TRUE)
+acs15_race <- acs15_race[, c(2, 134)]
+colnames(acs15_race) <- c("GEOID", "Percent_Black")
+combined <- merge(x = boros15, y = acs15_race, by = "GEOID")
+boros15 <- combined
+boros15@data$Percent_Black <- as.numeric(as.character(boros15@data$Percent_Black))
+
+acs15_inc <- read.csv("ACS_15_5YR_S1903_with_ann.csv", skip = 1, header = TRUE)
+acs15_inc <- acs15_inc[, c(2, 6)]
+colnames(acs15_inc) <- c("GEOID", "Household_Income")
+combined <- merge(x = boros15, y = acs15_inc, by = "GEOID")
+boros15 <- combined
+boros15@data$Household_Income <- as.numeric(as.character(boros15@data$Household_Income))
+
+bk <- boros15[boros15@data$COUNTYFP == "047", ]
+bx <- boros15[boros15@data$COUNTYFP == "005", ]
+ny <- boros15[boros15@data$COUNTYFP == "061", ]
+qn <- boros15[boros15@data$COUNTYFP == "081", ]
+si <- boros15[boros15@data$COUNTYFP == "085", ]
+
+CRS.new <- CRS("+proj=longlat +datum=WGS84")
+proj4string(sqf15_spdf_wgs84) <- CRS.new
+
+bk_tracts <- spTransform(bk, CRS("+proj=longlat +datum=WGS84"))
+count_tracts_bk <- over(sqf15_spdf_wgs84, bk_tracts)
+bk_counts <- as.data.frame(table(count_tracts_bk$NAME))
+bk_df <- merge(bk, bk_counts, by.x = "NAME", by.y = "Var1")
+
+bx_tracts <- spTransform(bx, CRS("+proj=longlat +datum=WGS84"))
+count_tracts_bx <- over(sqf15_spdf_wgs84, bx_tracts)
+bx_counts <- as.data.frame(table(count_tracts_bx$NAME))
+bx_df <- merge(bx, bx_counts, by.x = "NAME", by.y = "Var1")
+
+ny_tracts <- spTransform(ny, CRS("+proj=longlat +datum=WGS84"))
+count_tracts_ny <- over(sqf15_spdf_wgs84, ny_tracts)
+ny_counts <- as.data.frame(table(count_tracts_ny$NAME))
+ny_df <- merge(ny, ny_counts, by.x = "NAME", by.y = "Var1")
+
+qn_tracts <- spTransform(qn, CRS("+proj=longlat +datum=WGS84"))
+count_tracts_qn <- over(sqf15_spdf_wgs84, qn_tracts)
+qn_counts <- as.data.frame(table(count_tracts_qn$NAME))
+qn_df <- merge(qn, qn_counts, by.x = "NAME", by.y = "Var1")
+
+si_tracts <- spTransform(si, CRS("+proj=longlat +datum=WGS84"))
+count_tracts_si <- over(sqf15_spdf_wgs84, si_tracts)
+si_counts <- as.data.frame(table(count_tracts_si$NAME))
+si_df <- merge(si, si_counts, by.x = "NAME", by.y = "Var1")
+
+all_boros_df <- rbind(bk_df, bx_df, ny_df, qn_df, si_df)
+all_boros_df$ID <- 1:nrow(all_boros_df)
+
+boros15 <- all_boros_df
+```
+
+```{r census2010_setup, include = FALSE}
+boros10 <- tracts15[tracts15$COUNTYFP == "005" | 
+                      tracts15$COUNTYFP == "047" | 
+                      tracts15$COUNTYFP == "061" | 
+                      tracts15$COUNTYFP == "081" | 
+                      tracts15$COUNTYFP == "085", ]
+
+acs10_race <- read.csv("ACS_10_5YR_DP05_with_ann.csv", skip = 1, header = TRUE)
+acs10_race <- acs10_race[, c(2, 134)]
+colnames(acs10_race) <- c("GEOID", "Percent_Black")
+combined <- merge(x = boros10, y = acs10_race, by = "GEOID")
+boros10 <- combined
+boros10@data$Percent_Black <- as.numeric(as.character(boros10@data$Percent_Black))
+
+acs10_inc <- read.csv("ACS_10_5YR_S1903_with_ann.csv", skip = 1, header = TRUE)
+acs10_inc <- acs10_inc[, c(2, 6)]
+colnames(acs10_inc) <- c("GEOID", "Household_Income")
+combined <- merge(x = boros10, y = acs10_inc, by = "GEOID")
+boros10 <- combined
+boros10@data$Household_Income <- as.numeric(as.character(boros10@data$Household_Income))
+
+bk <- boros10[boros10@data$COUNTYFP == "047", ]
+bx <- boros10[boros10@data$COUNTYFP == "005", ]
+ny <- boros10[boros10@data$COUNTYFP == "061", ]
+qn <- boros10[boros10@data$COUNTYFP == "081", ]
+si <- boros10[boros10@data$COUNTYFP == "085", ]
+
+CRS.new <- CRS("+proj=longlat +datum=WGS84")
+proj4string(sqf10_spdf_wgs84) <- CRS.new
+
+bk_tracts <- spTransform(bk, CRS("+proj=longlat +datum=WGS84"))
+count_tracts_bk <- over(sqf10_spdf_wgs84, bk_tracts)
+bk_counts <- as.data.frame(table(count_tracts_bk$NAME))
+bk_df <- merge(bk, bk_counts, by.x = "NAME", by.y = "Var1")
+
+bx_tracts <- spTransform(bx, CRS("+proj=longlat +datum=WGS84"))
+count_tracts_bx <- over(sqf10_spdf_wgs84, bx_tracts)
+bx_counts <- as.data.frame(table(count_tracts_bx$NAME))
+bx_df <- merge(bx, bx_counts, by.x = "NAME", by.y = "Var1")
+
+ny_tracts <- spTransform(ny, CRS("+proj=longlat +datum=WGS84"))
+count_tracts_ny <- over(sqf10_spdf_wgs84, ny_tracts)
+ny_counts <- as.data.frame(table(count_tracts_ny$NAME))
+ny_df <- merge(ny, ny_counts, by.x = "NAME", by.y = "Var1")
+
+qn_tracts <- spTransform(qn, CRS("+proj=longlat +datum=WGS84"))
+count_tracts_qn <- over(sqf10_spdf_wgs84, qn_tracts)
+qn_counts <- as.data.frame(table(count_tracts_qn$NAME))
+qn_df <- merge(qn, qn_counts, by.x = "NAME", by.y = "Var1")
+
+si_tracts <- spTransform(si, CRS("+proj=longlat +datum=WGS84"))
+count_tracts_si <- over(sqf10_spdf_wgs84, si_tracts)
+si_counts <- as.data.frame(table(count_tracts_si$NAME))
+si_df <- merge(si, si_counts, by.x = "NAME", by.y = "Var1")
+
+all_boros_df <- rbind(bk_df, bx_df, ny_df, qn_df, si_df)
+all_boros_df$ID <- 1:nrow(all_boros_df)
+
+boros10 <- all_boros_df
+```
+
+Trends
+=====================================  
+
+Column {data-width=600}
+-------------------------------------
+
+<b>Authors:</b> Mallory Evans, Hana Konradova, Tomás Nazal Paredes. <br> All data taken from the official NYPD's <a href = "http://www.nyc.gov/html/nypd/html/analysis_and_planning/stop_question_and_frisk_report.shtml">Stop and Frisk database</a>, unless otherwise noted.
+
+- The overall number of stops decreased by 96.7% between the years of 2011 and 2015, while the occurrence of felony offenses didn't change significantly. Misdemeanor offenses dropped by 17.6% during the whole period.
+- The stops' effectiveness as measured by proportion of stops where arrest was made increased almost threefold from 6% in 2011 to 17.6% in 2015; the usage of handcuffs rose at a similar pace.
+- To explore the variables in isolation, double click on the name of the variable or choose from a dropdown menu. 
+
+###
+
+```{r stops_and_crime}
+plot_ly(overall_stats, x = ~year, y = ~freq_all, name = "Stop and frisk",
+        type = "scatter", mode = "lines+markers", line = list(width = 4)) %>% 
+    add_trace(y = ~felony_total, name = "Felony", type = "scatter", 
+              mode = "lines + markers", line = list(width = 3, dash = "dot")) %>% 
+    add_trace(y = ~misdemeanor, name = "Misdemeanor", type = "scatter", 
+              mode = "lines + markers", line = list(width = 3, dash = "dash")) %>% 
+    layout(title = "<b>Stops and Crime in NYC 2010-2015</b>",
+           xaxis = list(title = "Year", showgrid = FALSE),
+           yaxis = list(title = "Count"),
+           legend = list(x = 0.78, y = 0.81),
+           annotations = list(text = '<i><b>Sources:</b> <a href = "http://www.nyc.gov/html/nypd/html/analysis_and_planning/historical_nyc_crime_data.shtml">Citywide historical crime data by NYPD</a></i><br><i><a href = "http://www.nyc.gov/html/nypd/html/analysis_and_planning/stop_question_and_frisk_report.shtml">Stop, Question and Frisk database by NYPD</a></i>', xref = "paper", yref = "paper", 
+                              xanchor = "right", yanchor = "right",
+                              x = 1, y = 1, showarrow = FALSE, align = "right"),
+           margin = list(t = 50)
+          )
+```
+
+Column {data-width=400}
+-------------------------------------
+
+###
+
+```{r effectiveness}
+plot_ly(overall_stats, x = ~year, y = ~pct_arrest, name = "Arrest<br>made", 
+        type = "bar", opacity = 0.8) %>% 
+    add_trace(y = ~pct_contrabn, name = "Contraband<br>found", type = "bar", opacity = 0.8) %>% 
+    add_trace(y = ~pct_wpn, name = "Weapon<br>found", type = "bar", opacity = 0.8) %>% 
+    layout(title = "<b>Stop and Frisk Effectiveness</b>",
+         xaxis = list(title = "Year"),
+         yaxis = list (title = "", ticksuffix = "%"), 
+         legend = list(y = 0.5),
+         margin = list(t = 50)
+         )
+```
+
+###
+    
+```{r force}
+plot_ly(overall_stats, x = ~year, y = ~pct_force, name = "Any", 
+        type = "bar", opacity = 0.8) %>% 
+    add_trace(y = ~pct_hands, name = "Hands", type = "bar", 
+                  opacity = 0.8, visible = F) %>%     
+    add_trace(y = ~pct_wall, name = "Suspect against wall", type = "bar", 
+                  opacity = 0.8, visible = F) %>% 
+    add_trace(y = ~pct_wpn, name = "Suspect on ground", type = "bar", 
+                  opacity = 0.8, visible = F) %>% 
+    add_trace(y = ~pct_drwep, name = "Weapon drawn", type = "bar", 
+                  opacity = 0.8, visible = F) %>%  
+    add_trace(y = ~pct_ptwep, name = "Weapon pointed", type = "bar", 
+                  opacity = 0.8, visible = F) %>% 
+    add_trace(y = ~pct_baton, name = "Baton", type = "bar", 
+                  opacity = 0.8, visible = F) %>% 
+    add_trace(y = ~pct_hcuff, name = "Handcuffs", type = "bar", 
+                  opacity = 0.8, visible = F) %>% 
+    add_trace(y = ~pct_pepsp, name = "Pepper spray", type = "bar", 
+                  opacity = 0.8, visible = F) %>% 
+    add_trace(y = ~pct_pfother, name = "Other", type = "bar", 
+                  opacity = 0.8, visible = F) %>% 
+    layout(title = "<b>Physical Force Used by Officer During Stops</b>",
+         xaxis = list(title = "Year"),
+         yaxis = list (title = "", ticksuffix = "%"),
+         showlegend = FALSE,
+         updatemenus = list(
+             list(
+             y = 1.05, x = 0.7,
+             buttons = list(
+                 list(method = "restyle",
+                      args = list("visible", list(TRUE, FALSE, FALSE, FALSE, FALSE, 
+                                                  FALSE, FALSE, FALSE, FALSE, FALSE)),
+                      label = "Any"),
+                 list(method = "restyle",
+                      args = list("visible", list(FALSE, TRUE, FALSE, FALSE, FALSE, 
+                                                  FALSE, FALSE, FALSE, FALSE, FALSE)),
+                      label = "Hands"),
+                 list(method = "restyle",
+                      args = list("visible", list(FALSE, FALSE, TRUE, FALSE, FALSE, 
+                                                  FALSE, FALSE, FALSE, FALSE, FALSE)),
+                      label = "Suspect against wall"),
+                 list(method = "restyle",
+                      args = list("visible", list(FALSE, FALSE, FALSE, TRUE, FALSE, 
+                                                  FALSE, FALSE, FALSE, FALSE, FALSE)),
+                      label = "Suspect on ground"),
+                 list(method = "restyle",
+                      args = list("visible", list(FALSE, FALSE, FALSE, FALSE, TRUE, 
+                                                  FALSE, FALSE, FALSE, FALSE, FALSE)),
+                      label = "Weapon drawn"),
+                 list(method = "restyle",
+                      args = list("visible", list(FALSE, FALSE, FALSE, FALSE, FALSE, 
+                                                  TRUE, FALSE, FALSE, FALSE, FALSE)),
+                      label = "Weapon pointed"),
+                 list(method = "restyle",
+                      args = list("visible", list(FALSE, FALSE, FALSE, FALSE, FALSE, 
+                                                  FALSE, TRUE, FALSE, FALSE, FALSE)),
+                      label = "Baton"),
+                 list(method = "restyle",
+                      args = list("visible", list(FALSE, FALSE, FALSE, FALSE, FALSE, 
+                                                  FALSE, FALSE, TRUE, FALSE, FALSE)),
+                      label = "Handcuffs"),
+                 list(method = "restyle",
+                      args = list("visible", list(FALSE, FALSE, FALSE, FALSE, FALSE, 
+                                                  FALSE, FALSE, FALSE, TRUE, FALSE)),
+                      label = "Pepper spray"),
+                 list(method = "restyle",
+                      args = list("visible", list(FALSE, FALSE, FALSE, FALSE, FALSE, 
+                                                  FALSE, FALSE, FALSE, FALSE, TRUE)),
+                      label = "Other")))),
+         margin = list(l = 50, t = 50)
+         ) 
+```
+
+Targets 
+=====================================     
+   
+Column {data-width=500}
+-------------------------------------
+
+###
+
+<br>
+
+- Most frequent targets are black people (over 50%), males (over 90%), of a young age (median age is 23-24 for all years except for 2014).
+
+- The demographic composition of the targets didn't change significantly over time.
+
+- The only exception is age in 2014 with a median of 17. It might suggest either some substantial change in policy or a problem with the data (the age variable seemed poorly recorded in the original database; see Project book for details).  
+
+- To explore the variables in isolation, double click on the name of the variable. 
+
+###
+
+```{r race}
+plot_ly(overall_stats, x = ~year, y = ~pct_black, name = "Black", 
+        type = "bar", opacity = 0.8) %>% 
+    add_trace(y = ~pct_hisp, name = "Hispanic", type = "bar", opacity = 0.8) %>% 
+    add_trace(y = ~pct_white, name = "White", type = "bar", opacity = 0.8) %>% 
+    add_trace(y = ~pct_other, name = "Other", type = "bar", opacity = 0.8) %>% 
+    layout(title = "<b>Stops by Race</b>",
+         xaxis = list(title = "Year"),
+         yaxis = list (title = "", ticksuffix = "%"), 
+         barmode = "stack",
+         legend = list(y = 0.5),
+         margin = list(t = 50)
+         )
+```
+
+Column {data-width=500}
+-------------------------------------
+
+###
+
+```{r gender}
+plot_ly(overall_stats, x = ~year, y = ~pct_men, name = "Male", 
+        type = "bar", opacity = 0.8) %>% 
+    add_trace(y = ~pct_women, name = "Female", type = "bar", opacity = 0.8) %>% 
+    add_trace(y = ~pct_unknown, name = "Unknown", type = "bar", opacity = 0.8) %>% 
+    layout(title = "<b>Stops by Gender</b>",
+         xaxis = list(title = "Year"),
+         yaxis = list (title = "", ticksuffix = "%"), 
+         barmode = "stack",
+         legend = list(y = 0.5),
+         margin = list(t = 50)
+         )
+```   
+
+###
+
+```{r age}
+subset_data$age <- as.numeric(subset_data$age)
+subset_data$age_corr <- subset_data$age / 10 
+subset_data$age_corr <- round(subset_data$age_corr, 0)
+
+plot_ly(y = subset_data[subset_data$year == 2010, "age_corr"], type = "box", name = "2010") %>% 
+    add_trace(y = subset_data[subset_data$year == 2011, "age_corr"], type = "box", name = "2011") %>% 
+    add_trace(y = subset_data[subset_data$year == 2012, "age_corr"], type = "box", name = "2012") %>% 
+    add_trace(y = subset_data[subset_data$year == 2013, "age_corr"], type = "box", name = "2013") %>% 
+    add_trace(y = subset_data[subset_data$year == 2014, "age_corr"], type = "box", name = "2014") %>%
+    add_trace(y = subset_data[subset_data$year == 2015, "age_corr"], type = "box", name = "2015") %>% 
+    layout(title = "<b>Age of Stopped Suspects</b>",
+           xaxis = list(title = "Year"),
+           yaxis = list(dtick = 5),
+           legend = list(y = 0.5),
+           margin = list(t = 50)
+           ) 
+```
+
+Locations I
+=====================================   
+
+- These density maps show which areas in 2010 versus 2015 were most targeted by the NYPD for Stop and Frisk. 
+- While it may appear that there are more stops in 2015, the density of stops in 2010 is actually much higher and just more concentrated in smaller geographical areas.
+- In 2010, the NYPD overwhelmingly targeted East Harlem in Manhattan, but by 2015 they had decreased the frequency of stops overall, spread out more equally over the city, and shifted their main focus to the South Bronx.
+
+
+Column {data-witdh = 500}
+-------------------------------------
+
+###
+
+```{r}
+ggmap(map_NYC_st) + 
+  stat_density2d(aes(x = long, y = lat, fill = ..level.., alpha = ..level..), 
+                 data = sqf10_wgs84, geom = "polygon") + 
+  scale_alpha(range = c(0.00, 0.5), guide = FALSE) + 
+  scale_fill_gradient(low = "yellow", high = "red", limits = c(0, 125), 
+                      breaks = seq(0, 125, by = 25)) + 
+  theme(legend.position = "left") + theme_map_left() + 
+  theme(strip.text.x = element_text(size = 14, face = 2)) + 
+  ggtitle("Density of NYPD Stops in New York City - 2010") + 
+  theme(plot.title = element_text(hjust = 0.5, face = "bold", size = 15))
+
+ggmap(map_harlem_st) + 
+  stat_density2d(aes(x = long, y = lat, fill=..level.., alpha=..level..), 
+                 data = sqf10_wgs84, geom = "polygon") + 
+  scale_alpha(range = c(0.00, 0.5), guide = FALSE) + 
+  scale_fill_gradient(low = "yellow", high = "red", limits = c(0, 1000), 
+                      breaks = seq(0, 1000, by = 200)) + 
+  theme(legend.position = "left") + theme_map_left() + 
+  theme(strip.text.x = element_text(size = 14, face = 2)) + 
+  ggtitle("Density of NYPD Stops in Harlem and Bronx - 2010") + 
+  theme(plot.title = element_text(hjust = 0.5, face = "bold", size = 15))
+```
+
+Column {data-withd = 500}
+-------------------------------------
+
+###
+
+```{r}
+ggmap(map_NYC_st) + 
+  stat_density2d(aes(x = long, y = lat, fill = ..level.., alpha = ..level..), 
+                 data = sqf15_wgs84, geom = "polygon") + 
+  scale_alpha(range = c(0.00, 0.5), guide = FALSE) + 
+  scale_fill_gradient(low = "yellow", high = "red", limits = c(0, 125), 
+                      breaks = seq(0, 125, by = 25)) + 
+  theme(legend.position = "left") + theme_map_left() + 
+  theme(strip.text.x = element_text(size = 14, face = 2)) +
+  ggtitle("Density of NYPD Stops in New York City - 2015") + 
+  theme(plot.title = element_text(hjust = 0.5, face = "bold", size = 15))
+
+ggmap(map_harlem_st) + 
+  stat_density2d(aes(x = long, y = lat, fill=..level.., alpha=..level..), 
+                 data = sqf15_wgs84, geom = "polygon") + 
+  scale_alpha(range = c(0.00, 0.5), guide = FALSE) + 
+  scale_fill_gradient(low = "yellow", high = "red", limits = c(0, 1000), 
+                      breaks = seq(0, 1000, by = 200)) + 
+  theme(legend.position = "left") + theme_map_left() + 
+  theme(strip.text.x = element_text(size = 14, face = 2)) + 
+  ggtitle("Density of NYPD Stops in Harlem and Bronx - 2015") +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold", size = 15))
+```
+
+Locations II
+=====================================     
+   
+Column {data-width = 700}
+-------------------------------------
+
+###
+
+```{r, include = FALSE}
+nypp15 <- readOGR(dsn = "nypp.geojson", layer = "OGRGeoJSON")
+pct_freq15 <- plyr::count(sqf15_spdf@data, "pct")
+colnames(pct_freq15) <- c("Precinct", "Count")
+pct_merge <- merge(x = nypp15, y = pct_freq15, by = "Precinct")
+nypp15 <- pct_merge
+
+nypp10 <- readOGR(dsn = "nypp.geojson", layer = "OGRGeoJSON")
+pct_freq10 <- plyr::count(sqf10_spdf@data, "pct")
+newrow <- c(121, NA)
+pct_freq10 <- rbind(pct_freq10, newrow)
+colnames(pct_freq10) <- c("Precinct", "Count")
+pct_merge <- merge(x = nypp10, y = pct_freq10, by = "Precinct")
+nypp10 <- pct_merge
+```
+
+```{r, include = FALSE}
+pal15 <- colorFactor(c("#1F77B4", "#FF7F0E", "#D62728", "#2CA02C"), domain = sqf15_wgs84$race)
+color_race15 <- pal15(sqf15_wgs84$race)
+
+pal10 <- colorFactor(c("#1F77B4", "#FF7F0E", "#D62728", "#2CA02C"), domain = sqf10_wgs84$race)
+color_race10 <- pal10(sqf10_wgs84$race)
+```
+
+```{r}
+leaflet(sqf15_wgs84) %>% addTiles(group = "Base Map", 
+                                  'http://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png') %>% 
+  addPolygons(group = "Stops by Precinct", 
+              data = nypp15, stroke = TRUE, color = "black", weight = 0.4, fillOpacity = 0.8, 
+              fillColor = ~colorNumeric("Greys", Count)(Count), 
+              popup = paste("Precinct: ", nypp15@data$Precinct, "<br/>", "Stops: ", nypp15@data$Count)) %>% 
+  addCircleMarkers(group = "Race of Person Stopped", 
+                   color = color_race15, clusterOptions = markerClusterOptions(), 
+                   popup = paste("Sex: ", sqf15_wgs84$sex, "<br/>", 
+                           "Age: ", sqf15_wgs84$age, "<br/>", 
+                           "Height: ", sqf15_wgs84$ht_feet, " ft ", sqf15_wgs84$ht_inch, " in", "<br/>", 
+                           "Weight: ", sqf15_wgs84$weight, " lb", "<br/>", 
+                           sqf15_wgs84$Force)) %>% 
+  addCircles(group = "Stops in Which an Arrest was Made", data = arrests15, col = color_race15, 
+             popup = paste("Sex: ", sqf15_wgs84$sex, "<br/>", 
+                           "Age: ", sqf15_wgs84$age, "<br/>", 
+                           "Height: ", sqf15_wgs84$ht_feet, " ft ", sqf15_wgs84$ht_inch, " in", "<br/>", 
+                           "Weight: ", sqf15_wgs84$weight, " lb", "<br/>", 
+                           sqf15_wgs84$Force)) %>% 
+  addCircles(group = "Stops in Which Contraband was Found", data = contraband15, col = color_race15, 
+             popup = paste("Sex: ", sqf15_wgs84$sex, "<br/>", 
+                           "Age: ", sqf15_wgs84$age, "<br/>", 
+                           "Height: ", sqf15_wgs84$ht_feet, " ft ", sqf15_wgs84$ht_inch, " in", "<br/>", 
+                           "Weight: ", sqf15_wgs84$weight, " lb", "<br/>", 
+                           sqf15_wgs84$Force)) %>% 
+  addCircles(group = "Stops in Which a Weapon was Found", data = weapon15, col = color_race15, 
+             popup = paste("Sex: ", sqf15_wgs84$sex, "<br/>", 
+                           "Age: ", sqf15_wgs84$age, "<br/>", 
+                           "Height: ", sqf15_wgs84$ht_feet, " ft ", sqf15_wgs84$ht_inch, " in", "<br/>", 
+                           "Weight: ", sqf15_wgs84$weight, " lb", "<br/>", 
+                           sqf15_wgs84$Force)) %>% 
+  addLegend("topleft", colors = c("#1F77B4", "#FF7F0E", "#D62728", "#2CA02C"), 
+            labels = c("Black", "Hispanic", "Other", "White"), 
+            title = paste("2015", "<br/>", "Race of Person Stopped")) %>% 
+  addLayersControl(
+    baseGroups = c("Base Map"),
+    overlayGroups = c("Stops by Precinct", 
+                      "Race of Person Stopped",
+                      "Stops in Which an Arrest was Made",
+                      "Stops in Which Contraband was Found",
+                      "Stops in Which a Weapon was Found"), 
+    options = layersControlOptions(collapsed = TRUE)) %>% 
+    hideGroup(c("Stops in Which an Arrest was Made", "Stops in Which Contraband was Found",
+                "Stops in Which a Weapon was Found"))
+```
+
+Column {data-width = 300}
+-------------------------------------
+
+###
+
+- This interactive map allows exploration of individual characteristics of all 2015 stops.
+
+- <b>Stops by Precinct</b>: frequency of stops based on NYPD Precincts (and NYPD's estimations). The 106th Precinct, located in Ozone Park, Queens, has the most overall stops within its boundaries, followed by the 40th Precinct in the South Bronx. Click to display precinct number and number of stops.
+
+- <b>Race of Person Stopped</b>: clusters of all stops. Click to zoom in and explore each stop with individual characteristics, including whether force was used.
+
+- <b>Stops in Which an Arrest was Made</b>: only stops resulting in arrest, displayed by race. Click to view individual characteristics, including whether force was used.
+
+- <b>Stops in Which Contraband was Found</b>: only stops in which something was found that is illegal to possess or sell, displayed by race. Click to view individual characteristics, including whether force was used.
+
+- <b>Stops in Which a Weapon was Found</b>: only stops in which any weapons were found, including pistols, rifles, assault weapons, knives or cutting instruments, machine guns, and others. Click to view individual characteristics, including whether force was used. 
+
+- NYPD Precinct shapefiles came from the <a href="http://www1.nyc.gov/site/planning/data-maps/open-data/districts-download-metadata.page">New York City Department of Planning</a>.   
+
+Demographics I
+=====================================     
+   
+Column {data-width = 800}
+-------------------------------------
+
+###
+
+```{r, include = FALSE}
+puma <- readOGR(dsn = "subdivisions_2015/cb_2015_36_puma10_500k.shp")
+puma15 <- puma[grep("^NYC", puma$NAME10), ]
+puma10 <- puma[grep("^NYC", puma$NAME10), ]
+
+puma15_race <- read.csv("PUMA/ACS_15_5YR_DP05_with_ann.csv", skip = 1, header = TRUE)
+puma15_race <- puma15_race[, c(2, 134)]
+colnames(puma15_race) <- c("GEOID10","Percent_Black")
+combined <- merge(x = puma15, y = puma15_race, by = "GEOID10")
+puma15 <- combined
+puma15@data$Percent_Black <- as.numeric(as.character(puma15@data$Percent_Black))
+
+puma15@data$Percentile_Black <- rank(puma15@data$Percent_Black)/length(puma15@data$Percent_Black)*100
+puma15@data$Percentile_Black <- round(puma15@data$Percentile_Black, 2)
+puma15@data$Percentile_Black[is.na(puma15@data$Percent_Black)] <- NA
+
+puma15_inc <- read.csv("PUMA/ACS_15_5YR_S1903_with_ann.csv", skip = 1, header = TRUE)
+puma15_inc <- puma15_inc[, c(2, 6)]
+colnames(puma15_inc) <- c("GEOID10", "Median_Household_Income")
+combined <- merge(x = puma15, y = puma15_inc, by = "GEOID10")
+puma15 <- combined
+puma15@data$Median_Household_Income <- as.numeric(as.character(puma15@data$Median_Household_Income))
+
+puma15@data$Percentile_Income <- rank(puma15@data$Median_Household_Income)/length(puma15@data$Median_Household_Income)*100
+puma15@data$Percentile_Income <- round(puma15@data$Percentile_Income, 2)
+puma15@data$Percentile_Income[is.na(puma15@data$Median_Household_Income)] <- NA
+
+puma10_race <- read.csv("PUMA/ACS_10_5YR_DP05_with_ann.csv", skip = 1, header = TRUE)
+puma10_race <- puma10_race[, c(2, 134)]
+colnames(puma10_race) <- c("GEOID10","Percent_Black")
+combined <- merge(x = puma10, y = puma10_race, by = "GEOID10")
+puma10 <- combined
+puma10@data$Percent_Black <- as.numeric(as.character(puma10@data$Percent_Black))
+
+puma10@data$Percentile_Black <- rank(puma10@data$Percent_Black)/length(puma10@data$Percent_Black)*100
+puma10@data$Percentile_Black <- round(puma10@data$Percentile_Black, 2)
+puma10@data$Percentile_Black[is.na(puma10@data$Percent_Black)] <- NA
+
+puma10_inc <- read.csv("PUMA/ACS_10_5YR_S1903_with_ann.csv", skip = 1, header = TRUE)
+puma10_inc <- puma10_inc[, c(2, 6)]
+colnames(puma10_inc) <- c("GEOID10", "Median_Household_Income")
+combined <- merge(x = puma10, y = puma10_inc, by = "GEOID10")
+puma10 <- combined
+puma10@data$Median_Household_Income <- as.numeric(as.character(puma10@data$Median_Household_Income))
+
+puma10@data$Percentile_Income <- rank(puma10@data$Median_Household_Income)/length(puma10@data$Median_Household_Income)*100
+puma10@data$Percentile_Income <- round(puma10@data$Percentile_Income, 2)
+puma10@data$Percentile_Income[is.na(puma10@data$Median_Household_Income)] <- NA
+
+CRS.new <- CRS("+proj=longlat +datum=WGS84")
+proj4string(sqf15_spdf_wgs84) <- CRS.new
+proj4string(sqf10_spdf_wgs84) <- CRS.new
+
+puma15 <- spTransform(puma15, CRS("+proj=longlat +datum=WGS84"))
+count_puma15 <- over(sqf15_spdf_wgs84, puma15)
+puma15_counts <- as.data.frame(table(count_puma15$NAME))
+puma15_df <- merge(puma15, puma15_counts, by.x = "NAME10", by.y = "Var1")
+puma15 <- puma15_df
+
+puma15@data$Percentile_Freq <- rank(puma15@data$Freq)/length(puma15@data$Freq)*100
+puma15@data$Percentile_Freq <- round(puma15@data$Percentile_Freq, 2)
+
+puma10 <- spTransform(puma10, CRS("+proj=longlat +datum=WGS84"))
+count_puma10 <- over(sqf10_spdf_wgs84, puma10)
+puma10_counts <- as.data.frame(table(count_puma10$NAME))
+puma10_df <- merge(puma10, puma10_counts, by.x = "NAME10", by.y = "Var1")
+puma10 <- puma10_df
+
+puma10@data$Percentile_Freq <- rank(puma10@data$Freq)/length(puma10@data$Freq)*100
+puma10@data$Percentile_Freq <- round(puma10@data$Percentile_Freq, 2)
+
+colnames(puma15@data) <- c("Name", "GEOID", "STATEFP", "PUMAID", "AFFGEOID", "LSAD", 
+                           "ALAND", "AWATER", "Percent Population Black", 
+                           "Black Population Percentile", "Median Household Income", 
+                           "Income Percentile", "Number of Stops", "Stops Percentile")
+
+colnames(puma10@data) <- c("Name", "GEOID", "STATEFP", "PUMAID", "AFFGEOID", "LSAD", 
+                           "ALAND", "AWATER", "Percent Population Black", 
+                           "Black Population Percentile", "Median Household Income", 
+                           "Income Percentile", "Number of Stops", "Stops Percentile")
+
+pmap15_1 <- tm_shape(puma15) + tm_borders() + tm_fill("Black Population Percentile", 
+                                                      palette = "Blues",
+                                                      legend.show = TRUE,
+                                                      popup.vars = c("Percent Population Black", 
+                                                                     "Median Household Income", 
+                                                                     "Number of Stops")) + 
+  tm_layout("Percent of Population Black - 2015", legend.position = c("left", "top"))
+
+pmap15_2 <- tm_shape(puma15) + tm_borders() + tm_fill("Income Percentile", 
+                                                      palette = "Greens",
+                                                      legend.show = TRUE,
+                                                      popup.vars = c("Percent Population Black", 
+                                                                     "Median Household Income", 
+                                                                     "Number of Stops")) +  
+  tm_layout("Median Household Income - 2015", legend.position = c("left", "top"))
+
+pmap15_3 <- tm_shape(puma15) + tm_borders() + tm_fill("Stops Percentile", 
+                                                      palette = "Reds", 
+                                                      legend.show = TRUE, 
+                                                      popup.vars = c("Percent Population Black", 
+                                                                     "Median Household Income", 
+                                                                     "Number of Stops")) + 
+  tm_layout("Number of Stops - 2015", legend.position = c("left", "top"))
+
+
+pmap10_1 <- tm_shape(puma10) + tm_borders() + tm_fill("Black Population Percentile", 
+                                                      palette = "Blues", 
+                                                      legend.show = TRUE, 
+                                                      popup.vars = c("Percent Population Black", 
+                                                                     "Median Household Income", 
+                                                                     "Number of Stops")) +  
+  tm_layout("Percent of Population Black - 2010", legend.position = c("left", "top"))
+
+pmap10_2 <- tm_shape(puma10) + tm_borders() + tm_fill("Income Percentile", 
+                                                      palette = "Greens", 
+                                                      legend.show = TRUE, 
+                                                      popup.vars = c("Percent Population Black", 
+                                                                     "Median Household Income", 
+                                                                     "Number of Stops")) +  
+  tm_layout("Median Household Income - 2010", legend.position = c("left", "top"))
+
+pmap10_3 <- tm_shape(puma10) + tm_borders() + tm_fill("Stops Percentile", 
+                                                      palette = "Reds", 
+                                                      legend.show = TRUE, 
+                                                      popup.vars = c("Percent Population Black", 
+                                                                     "Median Household Income", 
+                                                                     "Number of Stops")) + 
+  tm_layout("Number of Stops - 2010", legend.position = c("left", "top"))
+```
+
+<center>
+
+```{r, fig.width = 6, fig.height = 6}
+tmap_arrange(pmap10_1, pmap10_2, pmap10_3, pmap15_1, pmap15_2, pmap15_3, ncol = 3, nrow = 2)
+```
+
+</center>
+
+Column {data-width = 200}
+-------------------------------------
+
+###
+
+<br>
+
+- To examine how Stop and Frisk relates to the demographic and economic composition of targeted areas, these maps display information for each of New York's Public Use Microdata Areas in 2010 and 2015 to compare between variables and over time. 
+
+- The percent of the population that is black and median household income did not change much between 2010 and 2015, though the locations of NYPD stops did change somewhat.
+
+- It appears that in both 2010 and 2015, the NYPD targeted areas that had a higher proportion of black residents, and lower-income households. (For the maps on median household income, lighter areas indicate less income.)
+
+- PUMA shapefiles and data came from the <a href="https://www.census.gov/geo/maps-data/data/cbf/cbf_puma.html">United States Census Bureau</a> and the <a href="https://www.census.gov/programs-surveys/acs/data/pums.html">American Community Survey</a>.
+
+Demographics II
+=====================================     
+
+- These interactive maps allow exploration of the same demographic and economic characteristics from the static maps, but for each census tract in New York City in 2010 and 2015, and the number of NYPD stops in each tract. 
+- While more detailed and varied between tracts than between PUMAs, it still appears that more NYPD stops occur in tracts that have a higher percentage of black residents, and lower median household income.  
+- In each layer, click to view census tract, percent of the population that is black, median household income in U.S. dollars, and the number of NYPD stops. 
+- Census tract shapefiles and data came from the <a href="https://www.census.gov/geo/maps-data/data/cbf/cbf_puma.html">United States Census Bureau</a> and the <a href="https://www.census.gov/programs-surveys/acs/data/pums.html">American Community Survey</a> (through American FactFinder).
+
+   
+Column {data-width = 500}
+-------------------------------------
+
+###
+
+```{r, include = FALSE}
+boros15@data$Percentile_Black <- rank(boros15@data$Percent_Black)/length(boros15@data$Percent_Black)*100
+boros15@data$Percentile_Black <- round(boros15@data$Percentile_Black, 2)
+boros15@data$Percentile_Black[is.na(boros15@data$Percent_Black)] <- NA
+
+boros15@data$Percentile_Income <- rank(boros15@data$Household_Income)/length(boros15@data$Household_Income)*100
+boros15@data$Percentile_Income <- round(boros15@data$Percentile_Income, 2)
+boros15@data$Percentile_Income[is.na(boros15@data$Household_Income)] <- NA
+
+boros15@data$Percentile_Freq <- rank(boros15@data$Freq)/length(boros15@data$Freq)*100
+boros15@data$Percentile_Freq <- round(boros15@data$Percentile_Freq, 2)
+boros15@data$Percentile_Freq[is.na(boros15@data$Freq)] <- NA
+
+boros10@data$Percentile_Black <- rank(boros10@data$Percent_Black)/length(boros10@data$Percent_Black)*100
+boros10@data$Percentile_Black <- round(boros10@data$Percentile_Black, 2)
+boros10@data$Percentile_Black[is.na(boros10@data$Percent_Black)] <- NA
+
+boros10@data$Percentile_Income <- rank(boros10@data$Household_Income)/length(boros10@data$Household_Income)*100
+boros10@data$Percentile_Income <- round(boros10@data$Percentile_Income, 2)
+boros10@data$Percentile_Income[is.na(boros10@data$Household_Income)] <- NA
+
+boros10@data$Percentile_Freq <- rank(boros10@data$Freq)/length(boros10@data$Freq)*100
+boros10@data$Percentile_Freq <- round(boros10@data$Percentile_Freq, 2)
+boros10@data$Percentile_Freq[is.na(boros10@data$Freq)] <- NA
+
+colnames(boros15@data) <- c("Census Tract", "GEOID", "STATEFP", "COUNTYFP", "TRACTCE", 
+                            "AFFGEOID", "LSAD", "ALAND", "AWATER", "Percent Population Black", 
+                            "Median Household Income", "Number of Stops", "ID", 
+                            "Black Population Percentile", "Income Percentile", "Stops Percentile")
+
+colnames(boros10@data) <- c("Census Tract", "GEOID", "STATEFP", "COUNTYFP", "TRACTCE", 
+                            "AFFGEOID", "LSAD", "ALAND", "AWATER", "Percent Population Black", 
+                            "Median Household Income", "Number of Stops", "ID", 
+                            "Black Population Percentile", "Income Percentile", "Stops Percentile")
+```
+
+```{r}
+leaflet(boros10) %>% addTiles(group = "Base Map", 
+                                  'http://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png') %>% 
+  addPolygons(group = "Percent of 2010 Population that is Black", stroke = TRUE, 
+              color = "black", weight = 0.4, fillOpacity = 1,
+              fillColor = ~colorQuantile("Purples", n = 5,`Black Population Percentile`)(`Black Population Percentile`), 
+              popup = paste("Census Tract: ", boros10@data$`Census Tract`, "<br/>", 
+                            "Percent Population Black: ", boros10@data$`Percent Population Black`, "<br/>", 
+                            "Median Household Income (USD): ", boros10@data$`Median Household Income`, "<br/>",
+                            "Number of NYPD Stops: ", boros10@data$`Number of Stops`)) %>% 
+  addPolygons(group = "2010 Median Household Income", stroke = TRUE, 
+              color = "black", weight = 0.4, fillOpacity = 1,
+              fillColor = ~colorQuantile("Purples", n = 5, `Income Percentile`)(`Income Percentile`),  
+              popup = paste("Census Tract: ", boros10@data$`Census Tract`, "<br/>", 
+                            "Percent Population Black: ", boros10@data$`Percent Population Black`, "<br/>", 
+                            "Median Household Income (USD): ", boros10@data$`Median Household Income`, "<br/>",
+                            "Number of NYPD Stops: ", boros10@data$`Number of Stops`)) %>%
+  addPolygons(group = "Number of NYPD Stops in 2010", stroke = TRUE, 
+              color = "black", weight = 0.4, fillOpacity = 1,
+              fillColor = ~colorQuantile("Purples", n = 5, `Stops Percentile`)(`Stops Percentile`),
+              popup = paste("Census Tract: ", boros10@data$`Census Tract`, "<br/>", 
+                            "Percent Population Black: ", boros10@data$`Percent Population Black`, "<br/>", 
+                            "Median Household Income (USD): ", boros10@data$`Median Household Income`, "<br/>",
+                            "Number of NYPD Stops: ", boros10@data$`Number of Stops`)) %>%
+    addLegend("topleft", colors = c("#f2f0f7", "#cbc9e2", "#9e9ac8", "#756bb1", "#54278f", "#969696"), 
+            labels = c("0 to 20", "20 to 40", "40 to 60", "60 to 80", "80 to 100", "No Data"), 
+            opacity = 0.9,
+            title = paste("2010", "<br/>", "Percentile")) %>%
+  addLayersControl(
+    baseGroups = c("Base Map"),
+    overlayGroups = c("Percent of 2010 Population that is Black", 
+                      "2010 Median Household Income", 
+                      "Number of NYPD Stops in 2010"), 
+    options = layersControlOptions(collapsed = TRUE)) %>% 
+    hideGroup(c("2010 Median Household Income", "Number of NYPD Stops in 2010"))
+```
+
+Column {data-width = 500}
+-------------------------------------
+
+###
+
+```{r}
+leaflet(boros15) %>% addTiles(group = "Base Map", 
+                                  'http://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png') %>% 
+  addPolygons(group = "Percent of 2015 Population that is Black", stroke = TRUE, 
+              color = "black", weight = 0.4, fillOpacity = 1,
+              fillColor = ~colorQuantile("Purples", n = 5,`Black Population Percentile`)(`Black Population Percentile`), 
+              popup = paste("Census Tract: ", boros15@data$`Census Tract`, "<br/>", 
+                            "Percent Population Black: ", boros15@data$`Percent Population Black`, "<br/>", 
+                            "Median Household Income (USD): ", boros15@data$`Median Household Income`, "<br/>",
+                            "Number of NYPD Stops: ", boros15@data$`Number of Stops`)) %>% 
+  addPolygons(group = "2015 Median Household Income", stroke = TRUE, 
+              color = "black", weight = 0.4, fillOpacity = 1,
+              fillColor = ~colorQuantile("Purples", n = 5, `Income Percentile`)(`Income Percentile`), 
+              popup = paste("Census Tract: ", boros15@data$`Census Tract`, "<br/>", 
+                            "Percent Population Black: ", boros15@data$`Percent Population Black`, "<br/>", 
+                            "Median Household Income (USD): ", boros15@data$`Median Household Income`, "<br/>",
+                            "Number of NYPD Stops: ", boros15@data$`Number of Stops`)) %>%
+  addPolygons(group = "Number of NYPD Stops in 2015", stroke = TRUE, 
+              color = "black", weight = 0.4, fillOpacity = 1,
+              fillColor = ~colorQuantile("Purples", n = 5, `Stops Percentile`)(`Stops Percentile`), 
+              popup = paste("Census Tract: ", boros15@data$`Census Tract`, "<br/>", 
+                            "Percent Population Black: ", boros15@data$`Percent Population Black`, "<br/>", 
+                            "Median Household Income (USD): ", boros15@data$`Median Household Income`, "<br/>",
+                            "Number of NYPD Stops: ", boros15@data$`Number of Stops`)) %>%
+    addLegend("topleft", colors = c("#f2f0f7", "#cbc9e2", "#9e9ac8", "#756bb1", "#54278f", "#969696"), 
+            labels = c("0 to 20", "20 to 40", "40 to 60", "60 to 80", "80 to 100", "No Data"), 
+            opacity = 0.9,
+            title = paste("2015", "<br/>", "Percentile")) %>%
+  addLayersControl(
+    baseGroups = c("Base Map"),
+    overlayGroups = c("Percent of 2015 Population that is Black", 
+                      "2015 Median Household Income", 
+                      "Number of NYPD Stops in 2015"), 
+    options = layersControlOptions(collapsed = TRUE)) %>% 
+    hideGroup(c("2015 Median Household Income", "Number of NYPD Stops in 2015"))
+```
+
+Media
+=====================================     
+
+Column {data-width = 880}
+-------------------------------------
+
+<iframe src="https://tomasnazal.shinyapps.io/wordcloud1/" style="border: none; width: 770px; height: 585px"></iframe>
+
+Column {data-width = 120}
+-------------------------------------
+
+### 
+
+<h4><b>TOPICS ASSOCIATED WITH STOP & FRISK</b></h4>
+
+- Texts extracted from The New York Times Oped and Opinion pieces that mentioned Stop and Frisk from 2010 to 2016 (36 articles in total, some years have more text density than others).
+
+- Progression in time shows how subjects and players changed around the Stop and Frisk practice.
+
+- Main subjects evolve to talk more seriously about violence and profiling, though race and the role of the police is present through time.
+
+- From 2013, the subjects veer towards the legal process and contingent elections.
+
+- There is a change from the preoccupation about communities and violence, to a growing focus on the formal political process around Stop and Frisk. More clear after 2014.
+
+- 2016 sees the clear irruption of Donald Trump as a figure of reference for the debate. 
+   
+Sentiment
+=====================================     
+
+Row {.tabset}
+-----------------------------------------------------------------------
+
+### Graph
+
+![](plot_sentiment.jpeg)
+
+### Comments
+
+- Sentiment regarding Stop and Frisk in NYT OpEds and Opinion pages changes in time with a slight upward curve.
+
+- As protests and community attention to the NYPD practices intensified in 2012, the sentiment of articles took a deep plunge towards the negative. Before this, the damning articles on the The Voice and the audio recordings of prejudiced cops produced a similar phenomenon.
+
+- As the constitutionality of the practices was put in question by the courts, the sentiment raised positively, probably lauding the initiative.
+
+- Later spikes are probably related to further dismantling of Stop and Frisk.
+
+- Considering the occurrences, the NYT seems to be, in general, opposed to Stop and Frisk. A position consistent with their traditionally left-leaning politics.
+
+- Where Mayor Bloomberg's period has a lower sentiment in average, Mayor de Blasio's term is characterized by a raising curve. This probably responds to what was previously observed; Bloomberg's was the time of controversy and struggle, whereas de Blasio's saw the dismantling of the practices.
+
+### Methodology
+
+- Texts extracted from The New York Times Oped and Opinion pieces that mentioned Stop and Frisk from 2010 to 2016 (36 articles total, some years have more text density than others).
+
+- Sentiment extracted with the help of Bing sentiment dictionary and using The New York Times Oped and Opinion pieces that mentioned Stop and Frisk from 2010 to 2016.
+
+- Overall Sentiment is calculated as: (N of total positive sentiment words) - (N of total negative words) for each article. 
+
