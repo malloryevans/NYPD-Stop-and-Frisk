@@ -1,4 +1,4 @@
-## [Examining Trends in the NYPD's Stop and Frisk Program from 2010 to 2015](https://columbia-university-qmss.github.io/final-project-mallory-tomas-hana/Stop_and_Frisk_Visualization.html)
+## [Examining Trends in the NYPD's Stop and Frisk Program from 2010 to 2015](https://malloryevans.github.io/Stop_and_Frisk_Visualization.html)
 
 ### Team Members  
 Mallory Evans, mbe2121@columbia.edu  
